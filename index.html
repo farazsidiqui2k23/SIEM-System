@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIEM Monitor</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --red: #e11d48;
+    --red-dim: #9f1239;
+    --red-glow: rgba(225,29,72,0.25);
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: #050505;
+    font-family: 'Rajdhani', sans-serif;
+    color: #e5e5e5;
+    min-height: 100vh;
+  }
+  .mono { font-family: 'Share Tech Mono', monospace; }
+
+  /* scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
+    pointer-events: none; z-index: 50;
+  }
+
+  .panel {
+    background: #0d0d0d;
+    border: 1px solid #1f1f1f;
+  }
+  .panel-red { border-color: #3f0d18; }
+
+  .glow-red { box-shadow: 0 0 20px var(--red-glow); }
+
+  /* pulse dot */
+  .pulse { animation: pulsate 1.4s ease-in-out infinite; }
+  @keyframes pulsate { 0%,100%{opacity:1;} 50%{opacity:.2;} }
+
+  /* severity badges */
+  .sev-CRITICAL { background:#3f0d18; color:#fb7185; border:1px solid #9f1239; }
+  .sev-HIGH     { background:#1c1206; color:#fb923c; border:1px solid #92400e; }
+  .sev-MEDIUM   { background:#111806; color:#a3e635; border:1px solid #3f6212; }
+  .sev-LOW      { background:#06101c; color:#60a5fa; border:1px solid #1e3a5f; }
+  .sev-INFO     { background:#111; color:#6b7280; border:1px solid #222; }
+
+  /* alert severity */
+  .alert-CRITICAL { border-left: 3px solid #e11d48; background: #0d0307; }
+  .alert-HIGH     { border-left: 3px solid #f97316; background: #0d0800; }
+  .alert-MEDIUM   { border-left: 3px solid #84cc16; background: #080d02; }
+
+  /* log rows */
+  .log-row { border-bottom: 1px solid #111; transition: background .1s; }
+  .log-row:hover { background: #111; }
+  .log-row.new-row { animation: slideIn .3s ease; }
+  @keyframes slideIn { from{opacity:0;transform:translateX(-8px);} to{opacity:1;transform:none;} }
+
+  /* alert flash */
+  .alert-flash { animation: flashIn .4s ease; }
+  @keyframes flashIn { 0%{opacity:0;transform:scale(.97);} 100%{opacity:1;transform:none;} }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #0a0a0a; }
+  ::-webkit-scrollbar-thumb { background: #3f0d18; border-radius: 2px; }
+
+  /* upload zone */
+  .upload-zone {
+    border: 2px dashed #3f0d18;
+    transition: border-color .2s, background .2s;
+    cursor: pointer;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--red);
+    background: rgba(225,29,72,0.05);
+  }
+
+  /* top bar blink */
+  .blink { animation: blink 1s step-end infinite; }
+  @keyframes blink { 50%{opacity:0;} }
+
+  /* metric card */
+  .metric-card { border: 1px solid #1a1a1a; background: #0a0a0a; }
+  .metric-card.active-crit { border-color: #9f1239; box-shadow: 0 0 12px rgba(225,29,72,.2); }
+
+  /* progress bar for stats */
+  .stat-bar { background: #1a1a1a; height: 3px; border-radius: 2px; overflow: hidden; }
+  .stat-fill { height: 100%; border-radius: 2px; transition: width .5s ease; }
+
+  input[type=text] {
+    background: #0a0a0a;
+    border: 1px solid #222;
+    color: #e5e5e5;
+    outline: none;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  input[type=text]:focus { border-color: #9f1239; }
+  button { cursor: pointer; transition: all .15s; font-family: 'Rajdhani', sans-serif; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<header class="panel border-b border-red-950 px-6 py-3 flex items-center justify-between sticky top-0 z-40">
+  <div class="flex items-center gap-4">
+    <span class="text-red-500 text-2xl">⬡</span>
+    <div>
+      <div class="text-white font-bold text-xl tracking-widest uppercase" style="font-family:'Rajdhani',sans-serif;">
+        SIEM <span class="text-red-600">Monitor</span>
+      </div>
+      <div class="mono text-xs text-zinc-600">Security Information & Event Management</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-6">
+    <div class="flex items-center gap-2">
+      <div class="w-2 h-2 rounded-full bg-red-500 pulse" id="statusDot"></div>
+      <span class="mono text-xs text-zinc-400" id="statusLabel">OFFLINE</span>
+    </div>
+    <div class="mono text-xs text-zinc-600" id="clock"></div>
+  </div>
+</header>
+
+<!-- MAIN -->
+<main class="p-4 max-w-screen-2xl mx-auto">
+
+  <!-- UPLOAD + WATCH ROW -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+
+    <!-- Upload -->
+    <div class="panel panel-red rounded p-4">
+      <div class="text-xs tracking-widest text-red-700 uppercase mb-3 mono">[ Upload Log File ]</div>
+      <div class="upload-zone rounded p-6 text-center" id="uploadZone"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="handleDrop(event)"
+           onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" class="hidden" accept=".log,.txt,.csv" onchange="handleFile(event)">
+        <div class="text-red-700 text-3xl mb-2">↑</div>
+        <div class="text-zinc-400 text-sm">Drop <span class="text-red-500">.log</span> / <span class="text-red-500">.txt</span> file here</div>
+        <div class="text-zinc-700 text-xs mt-1 mono">or click to browse</div>
+      </div>
+      <div id="fileInfo" class="mt-2 mono text-xs text-zinc-600 hidden"></div>
+    </div>
+
+    <!-- Watch path -->
+    <div class="panel panel-red rounded p-4">
+      <div class="text-xs tracking-widest text-red-700 uppercase mb-3 mono">[ Watch Live Log Path ]</div>
+      <div class="text-zinc-500 text-sm mb-3">Point to a file on the server and monitor it in real-time.</div>
+      <div class="flex gap-2 mb-2">
+        <input type="text" id="watchPath" placeholder="/var/log/syslog"
+               class="flex-1 rounded px-3 py-2 text-sm">
+        <button onclick="startWatch()"
+                class="bg-red-900 hover:bg-red-700 text-white px-4 py-2 rounded text-sm tracking-wider uppercase">
+          Watch
+        </button>
+      </div>
+      <div class="mono text-xs text-zinc-700">Server must be running. File must exist on server machine.</div>
+    </div>
+  </div>
+
+  <!-- METRICS ROW -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <div class="metric-card rounded p-4" id="cardTotal">
+      <div class="mono text-xs text-zinc-600 uppercase tracking-widest mb-2">Total Events</div>
+      <div class="text-3xl font-bold text-white" id="mTotal">0</div>
+      <div class="stat-bar mt-2"><div class="stat-fill bg-zinc-600" id="bTotal" style="width:0%"></div></div>
+    </div>
+    <div class="metric-card rounded p-4" id="cardCrit">
+      <div class="mono text-xs text-red-800 uppercase tracking-widest mb-2">Critical</div>
+      <div class="text-3xl font-bold text-red-500" id="mCrit">0</div>
+      <div class="stat-bar mt-2"><div class="stat-fill bg-red-700" id="bCrit" style="width:0%"></div></div>
+    </div>
+    <div class="metric-card rounded p-4">
+      <div class="mono text-xs text-orange-900 uppercase tracking-widest mb-2">High</div>
+      <div class="text-3xl font-bold text-orange-500" id="mHigh">0</div>
+      <div class="stat-bar mt-2"><div class="stat-fill bg-orange-700" id="bHigh" style="width:0%"></div></div>
+    </div>
+    <div class="metric-card rounded p-4" id="cardAlerts">
+      <div class="mono text-xs text-red-900 uppercase tracking-widest mb-2">Alerts Fired</div>
+      <div class="text-3xl font-bold text-red-600" id="mAlerts">0</div>
+      <div class="stat-bar mt-2"><div class="stat-fill bg-red-900" id="bAlerts" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <!-- PANELS ROW -->
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+
+    <!-- LOG TABLE (2/3 width) -->
+    <div class="xl:col-span-2 panel rounded flex flex-col" style="height:520px;">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-900">
+        <span class="mono text-xs text-red-700 uppercase tracking-widest">[ Event Log ]</span>
+        <div class="flex items-center gap-3">
+          <select id="sevFilter" onchange="applyFilter()"
+                  class="bg-zinc-950 border border-zinc-800 text-zinc-400 text-xs rounded px-2 py-1 mono">
+            <option value="ALL">All severities</option>
+            <option value="CRITICAL">Critical</option>
+            <option value="HIGH">High</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="LOW">Low</option>
+            <option value="INFO">Info</option>
+          </select>
+          <select id="typeFilter" onchange="applyFilter()"
+                  class="bg-zinc-950 border border-zinc-800 text-zinc-400 text-xs rounded px-2 py-1 mono">
+            <option value="ALL">All types</option>
+            <option value="AUTH">Auth</option>
+            <option value="NETWORK">Network</option>
+            <option value="SYSTEM">System</option>
+            <option value="FILE">File</option>
+          </select>
+          <span class="mono text-xs text-zinc-700" id="evCount">0 events</span>
+          <button onclick="clearAll()" class="mono text-xs text-zinc-700 hover:text-red-600">clear</button>
+        </div>
+      </div>
+
+      <!-- table head -->
+      <div class="grid mono text-xs text-zinc-600 px-4 py-2 border-b border-zinc-900 uppercase tracking-widest"
+           style="grid-template-columns:110px 80px 70px 1fr 110px;">
+        <span>Time</span><span>Severity</span><span>Type</span><span>Message</span><span>IP</span>
+      </div>
+
+      <!-- table body -->
+      <div class="flex-1 overflow-y-auto" id="logBody">
+        <div class="flex items-center justify-center h-full mono text-xs text-zinc-800">
+          — upload a file or start watching a path —
+        </div>
+      </div>
+    </div>
+
+    <!-- ALERTS PANEL (1/3 width) -->
+    <div class="panel rounded flex flex-col" style="height:520px;">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-900">
+        <div class="flex items-center gap-2">
+          <span class="mono text-xs text-red-700 uppercase tracking-widest">[ Alerts ]</span>
+          <span class="bg-red-950 text-red-400 mono text-xs px-2 py-0.5 rounded" id="alertBadge">0</span>
+        </div>
+        <button onclick="clearAlerts()" class="mono text-xs text-zinc-700 hover:text-red-600">clear</button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2" id="alertBody">
+        <div class="flex items-center justify-center h-full mono text-xs text-zinc-800 text-center">
+          — no alerts fired —<br>system is clean
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATS ROW -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+    <div class="panel rounded p-3">
+      <div class="mono text-xs text-zinc-700 mb-2 uppercase">By Type</div>
+      <div id="typeStats" class="space-y-1"></div>
+    </div>
+    <div class="panel rounded p-3 md:col-span-3">
+      <div class="mono text-xs text-zinc-700 mb-2 uppercase">Recent Activity Timeline</div>
+      <div class="flex items-end gap-1 h-12" id="timeline"></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let events = [], alerts = [], ws = null;
+let counts = { CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, INFO:0 };
+let typeCounts = { AUTH:0, NETWORK:0, SYSTEM:0, FILE:0 };
+let timeline = [];
+
+// ─── Clock ───────────────────────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toISOString().replace('T',' ').slice(0,19);
+}, 1000);
+
+// ─── WebSocket ───────────────────────────────────────────────────────────────
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+  ws.onopen = () => setStatus(true);
+  ws.onclose = () => { setStatus(false); setTimeout(connect, 3000); };
+
+  ws.onmessage = (msg) => {
+    const data = JSON.parse(msg.data);
+    if (data.type === 'init') {
+      data.events.forEach(e => addEvent(e, false));
+      data.alerts.forEach(a => addAlert(a, false));
+      updateMetrics();
+    } else if (data.type === 'event') {
+      addEvent(data.event, true);
+      data.alerts.forEach(a => addAlert(a, true));
+      updateMetrics();
+    }
+  };
+}
+
+function setStatus(on) {
+  document.getElementById('statusLabel').textContent = on ? 'CONNECTED' : 'OFFLINE';
+  document.getElementById('statusDot').className = `w-2 h-2 rounded-full ${on ? 'bg-red-500 pulse' : 'bg-zinc-700'}`;
+}
+
+// ─── Event rendering ─────────────────────────────────────────────────────────
+function addEvent(e, animate) {
+  events.unshift(e);
+  if (events.length > 2000) events.pop();
+  counts[e.severity] = (counts[e.severity] || 0) + 1;
+  typeCounts[e.type] = (typeCounts[e.type] || 0) + 1;
+  timeline.push(e.severity);
+  if (timeline.length > 60) timeline.shift();
+  renderLogs(animate);
+  renderTypeStats();
+  renderTimeline();
+}
+
+function renderLogs(animateFirst) {
+  const sevF = document.getElementById('sevFilter').value;
+  const typF = document.getElementById('typeFilter').value;
+  const filtered = events.filter(e =>
+    (sevF === 'ALL' || e.severity === sevF) &&
+    (typF === 'ALL' || e.type === typF)
+  ).slice(0, 300);
+
+  document.getElementById('evCount').textContent = `${filtered.length} events`;
+
+  if (!filtered.length) {
+    document.getElementById('logBody').innerHTML =
+      '<div class="flex items-center justify-center h-full mono text-xs text-zinc-800">— no matching events —</div>';
+    return;
+  }
+
+  document.getElementById('logBody').innerHTML = filtered.map((e, i) => `
+    <div class="log-row grid items-start px-4 py-2 ${i === 0 && animateFirst ? 'new-row' : ''}"
+         style="grid-template-columns:110px 80px 70px 1fr 110px;">
+      <span class="mono text-xs text-zinc-600">${e.time.slice(11,19)||''}</span>
+      <span class="sev-${e.severity} mono text-xs px-1.5 py-0.5 rounded text-center self-start">${e.severity}</span>
+      <span class="mono text-xs text-zinc-500 self-start">${e.type}</span>
+      <span class="text-sm text-zinc-300 leading-snug pr-2">${e.message}</span>
+      <span class="mono text-xs text-zinc-600">${e.ip || '—'}</span>
+    </div>
+  `).join('');
+}
+
+function applyFilter() { renderLogs(false); }
+
+// ─── Alert rendering ─────────────────────────────────────────────────────────
+function addAlert(a, animate) {
+  alerts.unshift(a);
+  renderAlerts(animate);
+}
+
+function renderAlerts(animateFirst) {
+  document.getElementById('alertBadge').textContent = alerts.length;
+  document.getElementById('mAlerts').textContent = alerts.length;
+
+  if (!alerts.length) {
+    document.getElementById('alertBody').innerHTML =
+      '<div class="flex items-center justify-center h-full mono text-xs text-zinc-800 text-center">— no alerts fired —<br>system is clean</div>';
+    return;
+  }
+
+  const sevIcon = { CRITICAL:'⚠', HIGH:'▲', MEDIUM:'●' };
+  document.getElementById('alertBody').innerHTML = alerts.slice(0, 50).map((a, i) => `
+    <div class="alert-${a.severity} rounded p-3 ${i === 0 && animateFirst ? 'alert-flash' : ''}">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-red-500">${sevIcon[a.severity]||'·'}</span>
+        <span class="font-bold text-sm text-white">${a.name}</span>
+        <span class="sev-${a.severity} mono text-xs px-1 rounded ml-auto">${a.severity}</span>
+      </div>
+      <div class="mono text-xs text-zinc-400 leading-snug mb-1">${a.detail}</div>
+      <div class="flex gap-3 mono text-xs text-zinc-700">
+        ${a.ip ? `<span>IP: ${a.ip}</span>` : ''}
+        <span>${a.time ? a.time.slice(11,19)||a.time : ''}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ─── Metrics ─────────────────────────────────────────────────────────────────
+function updateMetrics() {
+  const total = events.length;
+  document.getElementById('mTotal').textContent = total;
+  document.getElementById('mCrit').textContent = counts.CRITICAL || 0;
+  document.getElementById('mHigh').textContent = counts.HIGH || 0;
+
+  const pct = v => total ? Math.min(100, Math.round(v / total * 100)) : 0;
+  document.getElementById('bTotal').style.width = '100%';
+  document.getElementById('bCrit').style.width = pct(counts.CRITICAL) + '%';
+  document.getElementById('bHigh').style.width = pct(counts.HIGH) + '%';
+  document.getElementById('bAlerts').style.width = Math.min(100, alerts.length * 10) + '%';
+
+  if ((counts.CRITICAL || 0) > 0) {
+    document.getElementById('cardCrit').classList.add('active-crit');
+  }
+}
+
+function renderTypeStats() {
+  const total = events.length || 1;
+  const colors = { AUTH:'bg-red-800', NETWORK:'bg-orange-800', SYSTEM:'bg-yellow-900', FILE:'bg-zinc-700' };
+  document.getElementById('typeStats').innerHTML = Object.entries(typeCounts)
+    .filter(([,v]) => v > 0)
+    .map(([k,v]) => `
+      <div class="flex items-center gap-2">
+        <span class="mono text-xs text-zinc-600 w-16">${k}</span>
+        <div class="flex-1 stat-bar"><div class="stat-fill ${colors[k]||'bg-zinc-600'}" style="width:${Math.round(v/total*100)}%"></div></div>
+        <span class="mono text-xs text-zinc-500">${v}</span>
+      </div>
+    `).join('');
+}
+
+function renderTimeline() {
+  const colors = { CRITICAL:'#e11d48', HIGH:'#f97316', MEDIUM:'#84cc16', LOW:'#3b82f6', INFO:'#374151' };
+  const max = Math.max(1, timeline.length);
+  document.getElementById('timeline').innerHTML = timeline.map((sev, i) => {
+    const h = Math.round(((i + 1) / max) * 48);
+    return `<div style="flex:1;height:${h}px;background:${colors[sev]||'#374151'};border-radius:1px;opacity:.8;" title="${sev}"></div>`;
+  }).join('');
+}
+
+// ─── File upload ─────────────────────────────────────────────────────────────
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+}
+
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+}
+
+function processFile(file) {
+  document.getElementById('fileInfo').textContent = `Loading: ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+  document.getElementById('fileInfo').classList.remove('hidden');
+
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const lines = ev.target.result.split('\n').filter(l => l.trim());
+    document.getElementById('fileInfo').textContent = `Analyzing ${lines.length} lines from ${file.name}...`;
+
+    fetch('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lines })
+    }).then(r => r.json()).then(d => {
+      document.getElementById('fileInfo').textContent =
+        `✓ Done — ${d.events} events, ${d.alerts} alerts from ${file.name}`;
+    }).catch(() => {
+      // fallback: parse client-side if server not available
+      document.getElementById('fileInfo').textContent = `Server not found — parsing client-side...`;
+      lines.forEach(line => {
+        const e = parseLineClient(line);
+        if (e) { addEvent(e, false); }
+      });
+      updateMetrics();
+      document.getElementById('fileInfo').textContent = `✓ Client-side parse done — ${events.length} events`;
+    });
+  };
+  reader.readAsText(file);
+}
+
+// ─── Client-side fallback parser ─────────────────────────────────────────────
+function parseLineClient(line) {
+  line = line.trim();
+  if (!line) return null;
+  const ipM = line.match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/);
+  const tM  = line.match(/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/);
+  const sev = /crit|fatal/i.test(line) ? 'CRITICAL'
+            : /error|fail|denied/i.test(line) ? 'HIGH'
+            : /warn/i.test(line) ? 'MEDIUM'
+            : /info|success/i.test(line) ? 'LOW' : 'INFO';
+  const type = /auth|login|ssh|sudo|pass/i.test(line) ? 'AUTH'
+             : /tcp|udp|http|dns|port|net/i.test(line) ? 'NETWORK'
+             : /file|dir|read|write/i.test(line) ? 'FILE' : 'SYSTEM';
+
+  const event = { id: Date.now()+Math.random(), time: tM?tM[0]:new Date().toISOString().slice(0,19),
+                  severity:sev, type, message:line.slice(0,120), ip:ipM?ipM[1]:null };
+
+  // client-side rules
+  checkClientRules(event);
+  return event;
+}
+
+const _ipFails = {};
+function checkClientRules(e) {
+  // Brute force
+  if (e.type==='AUTH' && /fail|invalid|denied/i.test(e.message)) {
+    _ipFails[e.ip] = (_ipFails[e.ip]||0)+1;
+    if (_ipFails[e.ip] >= 5)
+      addAlert({name:'Brute Force Attack',severity:'CRITICAL',detail:e.message,ip:e.ip,time:e.time}, true);
+  }
+  if (/root/i.test(e.message) && /login|accepted/i.test(e.message))
+    addAlert({name:'Root Login Detected',severity:'CRITICAL',detail:e.message,ip:e.ip,time:e.time}, true);
+  if (/scan|sweep/i.test(e.message))
+    addAlert({name:'Port Scan Activity',severity:'HIGH',detail:e.message,ip:e.ip,time:e.time}, true);
+  if (/ransom|malware|rootkit/i.test(e.message))
+    addAlert({name:'Malware Signature',severity:'CRITICAL',detail:e.message,ip:e.ip,time:e.time}, true);
+}
+
+// ─── Watch path ───────────────────────────────────────────────────────────────
+function startWatch() {
+  const path = document.getElementById('watchPath').value.trim();
+  if (!path) return;
+  fetch('/watch', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({path})
+  }).then(r=>r.json()).then(d => {
+    if(d.error) alert(d.error);
+    else document.getElementById('statusLabel').textContent = 'WATCHING';
+  });
+}
+
+// ─── Clear ────────────────────────────────────────────────────────────────────
+function clearAll() {
+  events=[]; alerts=[]; counts={CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0};
+  typeCounts={AUTH:0,NETWORK:0,SYSTEM:0,FILE:0}; timeline=[];
+  Object.keys(_ipFails).forEach(k=>delete _ipFails[k]);
+  renderLogs(false); renderAlerts(false); updateMetrics();
+  renderTypeStats(); renderTimeline();
+}
+function clearAlerts() { alerts=[]; renderAlerts(false); updateMetrics(); }
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>

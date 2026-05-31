@@ -1,0 +1,30 @@
+2025-05-31 01:12:01 ERROR Failed password for root from 185.220.101.42 port 22 ssh2
+2025-05-31 01:12:03 ERROR Failed password for root from 185.220.101.42 port 22 ssh2
+2025-05-31 01:12:05 ERROR Failed password for root from 185.220.101.42 port 22 ssh2
+2025-05-31 01:12:07 ERROR Failed password for root from 185.220.101.42 port 22 ssh2
+2025-05-31 01:12:09 ERROR Failed password for root from 185.220.101.42 port 22 ssh2
+2025-05-31 01:12:12 INFO  Accepted password for root from 185.220.101.42 port 22 ssh2
+2025-05-31 02:33:14 WARN  Port scan detected from 203.0.113.77 targeting 10.0.0.1-254
+2025-05-31 03:45:20 INFO  User admin logged in from 192.168.1.10
+2025-05-31 04:11:55 ERROR sudo: 3 incorrect password attempts; TTY=pts/0; USER=root
+2025-05-31 06:20:01 INFO  Scheduled backup completed successfully
+2025-05-31 07:15:30 WARN  CPU usage spike detected: 94% by process python3 (pid 3821)
+2025-05-31 08:01:12 INFO  Service nginx started successfully
+2025-05-31 08:45:00 ERROR Disk I/O error on /dev/sda1 - read failed
+2025-05-31 09:10:22 WARN  Unusual outbound data transfer detected to 198.51.100.45 (2.4GB)
+2025-05-31 09:22:44 CRITICAL Ransomware signature detected - mass file encryption in /home/user/documents
+2025-05-31 09:23:01 CRITICAL Kernel module injection attempt by process uid=1001
+2025-05-31 10:05:55 INFO  User john logged in from 10.0.0.22
+2025-05-31 10:30:00 INFO  DNS query resolved for internal.corp.local
+2025-05-31 11:00:00 ERROR Failed password for admin from 91.108.4.100 port 22 ssh2
+2025-05-31 11:00:01 ERROR Failed password for admin from 91.108.4.100 port 22 ssh2
+2025-05-31 11:00:02 ERROR Failed password for admin from 91.108.4.100 port 22 ssh2
+2025-05-31 11:00:03 ERROR Failed password for admin from 91.108.4.100 port 22 ssh2
+2025-05-31 11:00:04 ERROR Failed password for admin from 91.108.4.100 port 22 ssh2
+2025-05-31 11:00:05 ERROR Failed password for admin from 91.108.4.100 port 22 ssh2
+2025-05-31 11:45:33 INFO  File /etc/passwd accessed by process audit (uid=0)
+2025-05-31 12:00:00 INFO  System health check: all services running
+2025-05-31 13:22:10 WARN  Privilege escalation attempt: setuid binary executed by uid=1002
+2025-05-31 14:05:01 INFO  User sarah logged in from 10.0.0.31
+2025-05-31 15:30:55 ERROR Connection refused from blacklisted IP 198.51.100.99
+2025-05-31 16:00:00 INFO  Log rotation completed
