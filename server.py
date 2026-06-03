@@ -19,6 +19,7 @@ all_events = []
 all_alerts = []
 
 # ─── Detection Rules ──────────────────────────────────────────────────────────
+#stateful = TRUE (jb hmara rule past memory p dependent ho)
 RULES = [
     {
         "id": "BRUTE_FORCE",
@@ -29,7 +30,7 @@ RULES = [
             re.search(r"fail|invalid|wrong|denied", e["message"], re.I) is not None
         ),
         "stateful": True,   # needs IP tracking
-        "threshold": 5,
+        "threshold": 5, #if in 60 sec more than 5 times user give wrong pass
         "window_sec": 60,
     },
     {
@@ -86,6 +87,7 @@ RULES = [
 # ─── Parser ───────────────────────────────────────────────────────────────────
 def parse_line(line):
     line = line.strip()
+    print(line)
     if not line:
         return None
 
@@ -132,17 +134,19 @@ def check_rules(event):
     now = time.time()
 
     for rule in RULES:
+        print(rule)
         try:
             if not rule["check"](event, None):
                 continue
 
+            # only applicable on BRUTE_FORCE
             if rule.get("stateful") and event.get("ip"):
                 ip = event["ip"]
                 login_tracker[ip].append(now)
                 # keep only within window
                 window = rule.get("window_sec", 60)
                 login_tracker[ip] = [t for t in login_tracker[ip] if now - t < window]
-                if len(login_tracker[ip]) < rule.get("threshold", 5):
+                if len(login_tracker[ip]) < rule.get("threshold", 5): #default 5 time
                     continue
 
             alert = {
@@ -193,6 +197,7 @@ def websocket(ws):
 # ─── REST: analyze uploaded file ──────────────────────────────────────────────
 @app.route("/analyze", methods=["POST"])
 def analyze():
+    
     global all_events, all_alerts
     all_events = []
     all_alerts = []
@@ -202,11 +207,14 @@ def analyze():
     lines = data.get("lines", [])
 
     for line in lines:
+        
         event = parse_line(line)
+        print(event)
         if not event:
             continue
         all_events.append(event)
         alerts = check_rules(event)
+        print(alerts)
         all_alerts.extend(alerts)
         broadcast({"type": "event", "event": event, "alerts": alerts})
         time.sleep(0.04)   # slight delay so frontend animates nicely
@@ -246,4 +254,11 @@ def index():
 
 if __name__ == "__main__":
     print("SIEM Server running → http://localhost:5000")
-    app.run(debug=False, port=5000, threaded=True)
+    # app.run(debug=True, port=5000, threaded=True)
+    app.run(
+    debug=True,
+    use_reloader=False,
+    port=5000,
+    threaded=True
+    )
+    

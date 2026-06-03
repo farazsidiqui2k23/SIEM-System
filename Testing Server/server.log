@@ -1,0 +1,14 @@
+2026-06-03 20:31:38 INFO     Demo server started on port 3000 from 127.0.0.1
+2026-06-03 20:31:55 INFO     Login page accessed from ::1
+2026-06-03 20:32:32 ERROR    Failed password for user [admin] - Invalid credentials from ::1
+2026-06-03 20:32:50 INFO     Accepted password for user [admin] from ::1
+2026-06-03 20:35:48 INFO     User session ended - logout from ::1
+2026-06-03 20:35:48 INFO     Login page accessed from ::1
+2026-06-03 20:41:36 INFO     Demo server started on port 3000 from 127.0.0.1
+2026-06-03 20:41:43 INFO     Login page accessed from ::1
+2026-06-03 20:42:24 INFO     Login page accessed from ::1
+2026-06-03 20:42:59 ERROR    Failed password for user [admin] - Invalid credentials from ::1
+2026-06-03 20:43:33 INFO     Accepted password for user [admin] from ::1
+2026-06-03 20:43:45 INFO     User session ended - logout from ::1
+2026-06-03 20:43:45 INFO     Login page accessed from ::1
+2026-06-03 20:43:59 ERROR    Failed password for user [admin] - Invalid credentials from ::1
